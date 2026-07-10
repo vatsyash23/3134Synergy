@@ -1,83 +1,90 @@
+//INCLUDE FILES - ANY NECESSARY FILES FOR THE PROGRAM TO RUN
 #include "main.h"
+#include "lemlib/api.hpp" // IWYU pragma: keep
 
-/**
- * A callback function for LLEMU's center button.
- *
- * When this callback is fired, it will toggle line 2 of the LCD text between
- * "I was pressed!" and nothing.
- */
+//VARIABLES 
+pros::Controller master(pros::E_CONTROLLER_MASTER);
+pros::MotorGroup left_mg({11, 12, 13}); //signs
+pros::MotorGroup right_mg({16, 17, 18}); //signs
+pros::adi::Pneumatics piston('A', false); //place holder
+pros::Imu inertial(7); //port
+pros::Rotation vertodom(8);	//port
+lemlib::TrackingWheel vert_tracking_wheel(&vertodom, 2, 2);  //place holder
+lemlib::Drivetrain drivetrain (&left_mg, &right_mg, 11.25, lemlib::Omniwheel::NEW_275, 450, 2);
+lemlib::OdomSensors odometry(&vert_tracking_wheel, nullptr, nullptr, nullptr, &inertial);
+lemlib::ControllerSettings straight_settings//tune
+(
+	5, //kP
+	0, //kI
+	1, //kD
+	3, //windup range
+	1, //small error range, inches
+	100, //small error range timeout, milliseconds
+	3, //large error range, inches
+	500, //large error range timeout, milliseconds
+	3 //max acceleration (slew)
+); 
+lemlib::ControllerSettings turn_settings //tune
+(
+	5, //kP
+	0, //kI
+	1, //kD
+	3, //windup range
+	1, //small error range, inches
+	100, //small error range timeout, milliseconds
+	3, //large error range, inches
+	500, //large error range timeout, milliseconds
+	3 //max acceleration (slew)
+); 
+lemlib::ExpoDriveCurve throttle_curve //tune
+(
+	5, //joystick deadband out of 127
+	12, //min output out of 127
+	1 //amount of curve
+); 
+lemlib::ExpoDriveCurve turn_curve //tune
+(
+	5, //joystick deadband out of 127
+	12, //min output out of 127
+	1 //amount of curve
+); 
+lemlib::Chassis chassis(drivetrain, straight_settings, turn_settings, odometry, &throttle_curve, &turn_curve); 
 
-/**
- * Runs initialization code. This occurs as soon as the program is started.
- *
- * All other competition modes are blocked by initialize; it is recommended
- * to keep execution time for this mode under a few seconds.
- */
-void initialize() {
-	pros::lcd::initialize();
-	pros::lcd::set_text(1, "Hello PROS User!");
+//AUTON FUNCTIONS
+void turnPIDtest()
+{
+	chassis.turnToHeading(90, false);
 }
 
-/**
- * Runs while the robot is in the disabled state of Field Management System or
- * the VEX Competition Switch, following either autonomous or opcontrol. When
- * the robot is enabled, this task will exit.
- */
-void disabled() {}
+//FUNCTIONS FOR AUTON AND DRIVER 
+void initialize() {}
+void disabled() {} //runs while robot is disabled after auton or opcontrol. ends when robot is enabled
+void competition_initialize() {} //runs after initialize, b4 auton. ends when robot is enabled. 
+//intended for comp-specific initialization routines, like an auton selector.
+void autonomous() //runs auton code. if disabled and restarted, the task will restart from the beginning, not resume.
+{
+	turnPIDtest();
+}
+void opcontrol() ////runs driver code. if disabled and restarted, the task will restart from the beginning, not resume.
+//if no comp control: will run immediately after initialize. 
+{
+	pros::Controller controller(pros::E_CONTROLLER_MASTER);
+    while (true) 
+	{
+        // get left y and right x positions
+        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_X);
 
-/**
- * Runs after initialize(), and before autonomous when connected to the Field
- * Management System or the VEX Competition Switch. This is intended for
- * competition-specific initialization routines, such as an autonomous selector
- * on the LCD.
- *
- * This task will exit when the robot is enabled and autonomous or opcontrol
- * starts.
- */
-void competition_initialize() {}
+        // move the robot
+        chassis.arcade(leftY, leftX, false, 0.5);
 
-/**
- * Runs the user autonomous code. This function will be started in its own task
- * with the default priority and stack size whenever the robot is enabled via
- * the Field Management System or the VEX Competition Switch in the autonomous
- * mode. Alternatively, this function may be called in initialize or opcontrol
- * for non-competition testing purposes.
- *
- * If the robot is disabled or communications is lost, the autonomous task
- * will be stopped. Re-enabling the robot will restart the task, not re-start it
- * from where it left off.
- */
-void autonomous() {}
+        // delay to save resources
+        pros::delay(25);
 
-/**
- * Runs the operator control code. This function will be started in its own task
- * with the default priority and stack size whenever the robot is enabled via
- * the Field Management System or the VEX Competition Switch in the operator
- * control mode.
- *
- * If no competition control is connected, this function will run immediately
- * following initialize().
- *
- * If the robot is disabled or communications is lost, the
- * operator control task will be stopped. Re-enabling the robot will restart the
- * task, not resume it from where it left off.
- */
-void opcontrol() {
-	pros::Controller master(pros::E_CONTROLLER_MASTER);
-	pros::MotorGroup left_mg({1, -2, 3});    // Creates a motor group with forwards ports 1 & 3 and reversed port 2
-	pros::MotorGroup right_mg({-4, 5, -6});  // Creates a motor group with forwards port 5 and reversed ports 4 & 6
+		if(master.get_digital(pros::E_CONTROLLER_DIGITAL_L1))
+		{
+			piston.toggle();
+		}
+    }
 
-
-	while (true) {
-		pros::lcd::print(0, "%d %d %d", (pros::lcd::read_buttons() & LCD_BTN_LEFT) >> 2,
-		                 (pros::lcd::read_buttons() & LCD_BTN_CENTER) >> 1,
-		                 (pros::lcd::read_buttons() & LCD_BTN_RIGHT) >> 0);  // Prints status of the emulated screen LCDs
-
-		// Arcade control scheme
-		int dir = master.get_analog(ANALOG_LEFT_Y);    // Gets amount forward/backward from left joystick
-		int turn = master.get_analog(ANALOG_RIGHT_X);  // Gets the turn left/right from right joystick
-		left_mg.move(dir - turn);                      // Sets left motor voltage
-		right_mg.move(dir + turn);                     // Sets right motor voltage
-		pros::delay(20);                               // Run for 20 ms then update
-	}
 }
