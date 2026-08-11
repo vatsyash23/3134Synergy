@@ -4,15 +4,18 @@
 
 //VARIABLES 
 pros::Controller master(pros::E_CONTROLLER_MASTER);
-pros::MotorGroup cascade ({1,9}, pros::MotorGearset::green);
+pros::MotorGroup cascade ({-2,10}, pros::MotorGearset::blue, pros::MotorUnits::degrees);
+pros::MotorGroup chainbar({1, -9}, pros::MotorGearset::rpm_200, pros::MotorUnits::degrees); //sign tune
 pros::MotorGroup left_mg({-11, -12, -13});
 pros::MotorGroup right_mg({18, 19, 20}); 
-pros::adi::Pneumatics piston('A', false); //port tune
-pros::Imu inertial(7); //port tune
-pros::Rotation vertodom(14);
-lemlib::TrackingWheel vert_tracking_wheel(&vertodom, 2, -0.5);
+pros::adi::Pneumatics piston('A', false);
+pros::Imu inertial(6); 
+pros::Rotation vertodom(-16);
+pros::Rotation horizodom(17);
+lemlib::TrackingWheel vert_tracking_wheel(&vertodom, 2, -1);
+lemlib::TrackingWheel horiz_tracking_wheel(&horizodom, 2, 0.5);
 lemlib::Drivetrain drivetrain (&left_mg, &right_mg, 11.25, lemlib::Omniwheel::NEW_275, 450, 2);
-lemlib::OdomSensors odometry(&vert_tracking_wheel, nullptr, nullptr, nullptr, &inertial);
+lemlib::OdomSensors odometry(&vert_tracking_wheel, &horiz_tracking_wheel, nullptr, nullptr, &inertial);
 lemlib::ControllerSettings straight_settings//tune
 (
 	5, //kP
@@ -56,15 +59,39 @@ void turnPIDtest()
 {
 	chassis.turnToHeading(90, false);
 }
-
+void straightPIDtest()
+{
+	chassis.setPose(0, 0, 0);
+	chassis.moveToPoint(0, 24, 5000); 
+	pros::delay(750);
+	chassis.moveToPoint(0, 12, 5000, {false});
+	pros::delay(750);
+	chassis.moveToPoint(0, 36, 5000);
+}
 //FUNCTIONS FOR AUTON AND DRIVER 
-void initialize() {}
+void macro()
+{
+	cascade.move_relative(-360, 400);
+	chainbar.move_relative(-360, 200);
+}
+void initialize() {
+    // calibrate IMU and odometry sensors
+	inertial.reset();
+    chassis.calibrate();
+
+    // reset odometry pose before auton
+    chassis.setPose(0, 0, 0);
+
+    // optionally reset the rotation sensors if needed
+	vertodom.reset_position();
+    horizodom.reset_position();
+}
 void disabled() {} //runs while robot is disabled after auton or opcontrol. ends when robot is enabled
 void competition_initialize() {} //runs after initialize, b4 auton. ends when robot is enabled. 
 //intended for comp-specific initialization routines, like an auton selector.
 void autonomous() //runs auton code. if disabled and restarted, the task will restart from the beginning, not resume.
 {
-	turnPIDtest();
+	straightPIDtest();
 }
 void opcontrol() ////runs driver code. if disabled and restarted, the task will restart from the beginning, not resume.
 //if no comp control: will run immediately after initialize. 
@@ -74,35 +101,60 @@ void opcontrol() ////runs driver code. if disabled and restarted, the task will 
 	{
         // get left y and right x positions
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-        int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
 
         // move the robot
-        chassis.arcade(leftY, leftX,false, 0.5);
+        chassis.arcade(leftY, rightX,false, 0.5);
 
 		
-	 	master.print(0, 0, "%i", vertodom.get_position());
+	 	int32_t pos = vertodom.get_position();
+		if (pos == PROS_ERR) {
+			master.print(0, 0, "ERR");
+		} else {
+			master.print(0, 0, "%i", pos);
+		}
         pros::delay(10); 
-	
 
-        // delay to save resources
-        pros::delay(25);
-
-		if(master.get_digital(pros::E_CONTROLLER_DIGITAL_L1))
+		if(master.get_digital(pros::E_CONTROLLER_DIGITAL_A))
 		{
 			piston.toggle();
 		}
+		if(master.get_digital(pros::E_CONTROLLER_DIGITAL_B))
+		{
+			macro();
+		}
 		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R1))
 		{
-			cascade.move_velocity(127);
+			chainbar.move_velocity(200); 
 		}
-		else if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2))
+		else
 		{
-			cascade.move_velocity(-127);
+			chainbar.move_velocity(0);
+		}
+		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2))
+		{
+			cascade.move_velocity(400);
 		}
 		else
 		{
 			cascade.move_velocity(0);
 		}
-    }
+		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L1))
+		{
+			chainbar.move_velocity(-200); 
+		}
+		else
+		{
+			chainbar.move_velocity(0);
+		}
+		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L2))
+		{
+			cascade.move_velocity(400);
+		}
+		else
+		{
+			cascade.move_velocity(0);
+		}
+	}
 
 }
